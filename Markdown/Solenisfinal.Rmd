@@ -1,0 +1,611 @@
+---
+title: "Solenis"
+output: 
+  html_document:
+    theme: yeti
+    highlight: textmate
+    toc: TRUE
+    toc_float: TRUE
+    df_print: paged
+    css: compassred.css
+
+---
+<script>
+  $(document).ready(function() {
+    $('#TOC').parent().prepend('<div id=\"nav_logo\"><img src=\"CompassRed primary.svg\"></div>');
+  });
+</script>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(here)
+library(tidyverse)
+#install.packages("kableExtra")
+library(cluster)  # For calculating the Gower Distance
+#library(Rtsne)    # For visualizing the clustering in 2-D
+#library(kableExtra)
+library(plotly)
+library(pca3d)
+#library(autoplotly)
+library(broom)
+library(factoextra)
+```
+
+```{r}
+source(here::here('Scripts', 'Formatting.R'))
+```
+
+```{r}
+Sample <- read_csv(here("Data","Sample.csv"))
+#length(unique(Sample$State))
+#Sample1 <- read_csv(here("Data",""))
+#Sample1 <- Sample1 %>% select(Cname,Country)
+#Sample <- merge(Sample,Sample1, by.x = "Country", by.y = "Country", all=T)
+
+Sample$Sales <- as.numeric(gsub('[$]','',Sample$Sales))
+Sample$Profit <- as.numeric(gsub('[$]','',Sample$Profit))
+Sample$`Shipping Cost` <- as.numeric(gsub('[$]','',Sample$`Shipping Cost`))
+Sample$`Order Date` <- as.Date(Sample$`Order Date`,format ="%m/%d/%Y")
+Sample$`Shipping Date` <- as.Date(Sample$`Shipping Date`,format ="%m/%d/%Y")
+Sample$`Product Category` <- as.factor(Sample$`Product Category`)
+
+Sample <- Sample %>% 
+           mutate(Order_year = as.numeric(format(`Order Date`, format = "%Y")),
+                 Order_month = as.numeric(format(`Order Date`, format = "%m")),
+                 Order_day = as.numeric(format(`Order Date`, format = "%d")))
+set.seed(8)
+#Train <- read_csv(here("Data","Train.csv"))
+# c <- unique(Sample$`Product Category`)
+# chn <- 
+#   (Sample$`Product Category`)
+# 
+# Sample %>% 
+#   group_by(Products,Product) %>% 
+#   count(Products) %>% 
+#   summarise(n) %>% 
+#   arrange(desc(Products))
+# unique(Sample$Products)
+Sample <- Sample %>% 
+  mutate(Product_Category= factor(ifelse(`Product Category`=="Electronic","Aerospace",
+                                           ifelse(`Product Category`=="Auto & Accessories","Heavy Industry",
+                                             ifelse(`Product Category`=="Home & Furniture","Automotive",
+                                                 ifelse(`Product Category`=="Fashion","Semi-conductors",0 ))))),
+           
+         
+          Products = factor(ifelse(Product=="Bike Tyres","PMP100",
+                                      ifelse(Product=="Car Body Covers","PMP100",
+                                           ifelse(Product=="Car & Bike Care","PMP100",
+                                             ifelse(Product=="Car Mat","PMP100",
+                                                 ifelse(Product=="Car Media Players","HEX200",
+                                                       ifelse(Product=="Car Pillow & Neck Rest","HEX200",
+                                             ifelse(Product=="Car Seat Covers","HEX200",
+                                                 ifelse(Product=="Car Speakers","DIS300",
+                                                        ifelse(Product=="Tyre","DIS305",
+                                             ifelse(Product=="Apple Laptop","AS111",
+                                                 ifelse(Product=="Fans","AS111",
+                                                       ifelse(Product=="Iron","AS111",
+                                             ifelse(Product=="Keyboard","AS111",
+                                                 ifelse(Product=="LCD","QS111",
+                                                         ifelse(Product=="LED","QS111",
+                                             ifelse(Product=="Mixer/Juicer","QS111",
+                                                 ifelse(Product=="Mouse","QS111",
+                                                       ifelse(Product=="Samsung Mobile","QS111",
+                                             ifelse(Product=="Speakers","EXH505",
+                                                 ifelse(Product=="Tablet","QS111",
+                                                        ifelse(Product=="Watch","EXH505",
+                                             ifelse(Product=="Casula Shoes","CR550",
+                                                 ifelse(Product=="Formal Shoes","CR550",
+                                                       ifelse(Product=="Fossil Watch","CR550",
+                                             ifelse(Product=="Jeans","CR550",
+                                                 ifelse(Product=="Running Shoes","CR550",
+                                                        ifelse(Product=="Jeans","CR550",
+                                                 ifelse(Product=="Running Shoes","CR550",
+                                                        ifelse(Product=="Shirts","CR550",
+                                                
+                                          
+                                                        
+                                                        
+                                                        ifelse(Product=="Sneakers","CR555",
+                                             ifelse(Product=="Sports Wear","CR555",
+                                                 ifelse(Product=="Suits","CR555",
+                                                       ifelse(Product=="T - Shirts","NCR632",
+                                             ifelse(Product=="Titak watch","NCR632",
+                                                 ifelse(Product=="Bed Sheets","EXH505",
+                                                        ifelse(Product=="Beds","EXH505",
+                                             ifelse(Product=="Curtains","ENG552",
+                                                 ifelse(Product=="Dinner Crockery","TURB555",
+                                                       ifelse(Product=="Dinning Tables","TURB555",
+                                             ifelse(Product=="Shoe Rack","TURB555",
+                                                 ifelse(Product=="Sofa Covers","EXH505",
+                                                         ifelse(Product=="Sofas","EXH505",
+                                             ifelse(Product=="Towels","EXH505",
+                                                  ifelse(Product=="Umbrellas","EXH505",0
+                                                  ))))))))))))))))))))))))))))))))))))))))))))),
+                            
+                            Account_Manager = factor(ifelse(`Account Manager`=="Meyer Brandon","MB",
+                                      ifelse(`Account Manager`=="Ware Liam","WL",
+                                           ifelse(`Account Manager`=="John C. Laney","JCL",
+                                             ifelse(`Account Manager`=="Park Nasir","PN",
+                                                 ifelse(`Account Manager`=="William M. Smith","WMS",
+                                                       ifelse(`Account Manager`=="Andersen Zain","AZ",
+                                             ifelse(`Account Manager`=="John Wick","JW",0)))))))),  
+                                                         
+                                                         
+                  Volume = as.numeric(Quantity*100),
+                  Gross_Margin = as.numeric(Profit*100),
+                  Revenue = as.numeric(Sales*100),
+                  
+                  Discount_factor = Discount,
+                  Ship_Mode = ifelse(`Ship Mode`=="First Class","Ground",
+                                             ifelse(`Ship Mode`=="Second Class","Ocean",
+                                                 ifelse(`Ship Mode`=="Standard Class","Air","Expedite"
+                                                  )))) %>% 
+  transform(id=match(State, unique(State))) %>% 
+  mutate(Customer_ID = paste0("Cust_",id)) %>% 
+  select(-"Ship.Mode",-"Product.Category",-"Profit",-"Discount","Quantity","Customer.ID",-"id",-"Sales",-"Shipping.Cost",
+         -"State",-"Account.Manager")
+
+#length(unique(Sample$`Customer ID`))
+Sample$Product_Category[Sample$Products=="EXH505"] <- "Heavy Industry"
+Sample$Region[Sample$Region=="Central"] <- "United States"
+Sample$Region[Sample$Region=="East"] <- "United States"
+Sample$Region[Sample$Region=="West"] <- "United States"
+Sample$Region[Sample$Region=="North"] <- "UK"
+Sample$Region[Sample$Region=="South"] <- "South America"
+write.csv(Sample,"Solenis.csv")  
+
+
+
+           
+                                                 
+
+```
+
+# Overview
+
+Our goal is perform data analysis on the B2B Ecommerce Sales Data. The analysis is as follows:
+
+- Dataset Description
+- Data Cleaning
+- Machine Learning Techniques - Clustering and Principal COmponent Analysis
+
+# Dataset Description
+
+The dataset contains about 51K oversations with 26 variables. These variables list the orders data, customers, products along with some demographic fields
+
+
+# Data Cleaning
+
+Here we have cleaned the data and added new fiels for our analysis namely:
+
+- Transactions
+- Average Order Value
+
+```{r}
+head(Sample)
+data3<-Sample %>% 
+  #mutate(Sales = gsub("\\$","", Sales)) %>% 
+  #mutate(Sales = as.numeric(Revenue)) %>% 
+  mutate(Date = as.Date(Order.Date, format =  "%m/%d/%Y")) %>%
+  mutate(Month = format(Date, format = "%b")) %>%
+  mutate(day_of_week = format(Date, format = "%A"))%>%
+ # mutate(revenue = sum(Reve)) %>% 
+#  mutate(Profit = gsub("\\$","", Profit)) %>% 
+#  mutate(Profit = as.numeric(Profit)) %>% 
+  mutate(transactions = n_distinct(Order.ID)) %>%
+  mutate(aveOrdVal = (round((Revenue / transactions), 2)))
+  
+```
+
+```{r}
+
+newdata<-data3 %>%
+  group_by(Customer_ID, Country) %>% 
+  summarise(transactions = n_distinct(Order.ID), Avg_Gross_Margin = mean(Gross_Margin), Avg_Volume = mean(Volume), discount = sum(Discount_factor), Revenue = sum(Revenue) )
+  
+
+```
+
+
+
+# Machine Learning Techniques -  Clustering
+
+## Plot 1 
+
+```{r}
+
+set.seed(123)
+cl <- kmeans(newdata[3:7], 4, nstart = 20)
+#cldata
+dd <- cbind(newdata, cluster = cl$cluster)
+cl$cluster <- as.factor(cl$cluster)
+dd[which(dd[,8]==2, arr.ind=TRUE), 8] <- "Price Fighters"
+dd[which(dd[,8]==1, arr.ind=TRUE), 8] <- "Brand Buyers"
+dd[which(dd[,8]==3, arr.ind=TRUE), 8] <- "Bargain Hunters "
+dd[which(dd[,8]==4, arr.ind=TRUE), 8] <- "Value Seekers"
+
+dd %>%
+  #mutate(cluster = cl$cluster) %>%
+  ggplot(aes(Avg_Gross_Margin,transactions, color = factor(cluster), label = Customer_ID)) +
+   geom_point(check_overlap = TRUE)+
+  labs( title = "Customer Segmentation based on Transactions and Margin", y = "Transactions" , x = "Gross Margin")
+#aggregate(dd, by=list(cl$cluster), mean)
+
+
+
+
+```
+
+## Plot 2 
+
+```{r}
+data4<-data3 %>% 
+  group_by(Order.ID,Order.Date, Customer_ID, Country) %>%
+  summarise(transactions = n_distinct(Order.ID), Revenue = sum(Revenue)) %>% 
+  mutate(recent = Sys.Date() - Order.Date) %>%
+  ungroup() %>% 
+  select(Customer_ID, Country, recent, transactions, Revenue,Order.ID)
+
+data4$recent <- as.character(data4$recent)
+data4$recentDays <- sapply(data4$recent, FUN = function(x) {strsplit(x, split = '[ ]')[[1]][1]})
+data4$recentDays <- as.integer(data4$recentDays)
+
+
+
+data5<-data4 %>% 
+  group_by(Customer_ID, Country) %>%
+  summarise(transactions = n_distinct(Order.ID), Revenue = sum(Revenue), recency = min(recentDays)) %>% 
+  ungroup() %>% 
+  select(Customer_ID, Country, recency, transactions, Revenue)
+
+
+
+repeat_cust<-data5 %>% 
+  filter(transactions> 45, Revenue>717013)
+
+
+set.seed(123)
+repeat_cl <- kmeans(repeat_cust[3:5], 4, nstart = 20)
+#cldata
+repeat_cust_df <- cbind(repeat_cust, cluster = repeat_cl$cluster)
+repeat_cust_df$cluster <- as.factor(repeat_cl$cluster)
+
+repeat_cust_df %>%
+  #mutate(cluster = cl$cluster) %>%
+  ggplot(aes(recency,Revenue, color = factor(cluster), size = transactions,label = Customer_ID)) +
+   geom_point(check_overlap = TRUE)+
+  labs( title = "Repeat Customers Segmentation based on Revenue, Recency and # of Transactions", y = "Revenue" , x = "Recency (Days)")+
+   scale_y_continuous(labels = scales::comma)
+
+
+
+```
+
+## Plot 3
+
+```{r}
+set.seed(11)
+#library(gapminder)
+
+PC_Pcl <- Sample %>% 
+  group_by(Product_Category,Region,Country, Products, Customer_ID) %>% 
+  summarise(Revenue = sum(Revenue), Total_Profit = sum(Gross_Margin), Total_Quantity = sum(Volume))
+
+
+
+Dist <- dist(PC_Pcl[,6:8],method = "euclidean")
+hc<-hclust(Dist,"single")
+
+memb<-cutree(hc,k=10)
+PC_Pcl1 <- PC_Pcl[,6:8]
+
+cent<-NULL
+for (k in 1:15){cent<-rbind(cent,colMeans(PC_Pcl1[memb==k,,drop=FALSE]))}
+
+
+k.max <- 15
+data <- scale(PC_Pcl[,6:8])
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15 )$tot.withinss})
+
+# x <- plot(1:k.max, wss,
+#      type="b", pch = 19, frame = FALSE, 
+#      xlab="Number of clusters K",
+#      ylab="Total within-clusters sum of squares")
+
+
+cl=kmeans(PC_Pcl[,6:8],3)
+#write.csv(cl$centers, "C:\\Users\\Vinod\\Desktop\\Multivariate Analysis\\Solenis\\cl.csv")
+centers <- as.data.frame(cl$centers)
+centers <- centers %>% 
+  rownames_to_column("Clusternum") %>% 
+  mutate(type = ifelse(Total_Profit >= max(Total_Profit),"High Value Customers",
+                       ifelse(Total_Profit <= min(Total_Profit),"Low Value Customers","Mid Value Customers"))) %>% 
+  select("Clusternum","type")
+  
+
+CustomerData<-cbind(PC_Pcl, Group = cl$cluster)
+Customer_Data<-merge(CustomerData,centers,by.x = "Group",by.y = "Clusternum", all = T)
+#install.packages("factoextra")
+#library(factoextra)
+
+#fviz_cluster(cl, data = PC_Pcl[,6:8],choose.vars = c("Revenue","Total_Profit"), geom = "point", stand = TRUE )
+Customer_Data$Group <- as.factor(Customer_Data$Group)
+clust <- Customer_Data %>% 
+  group_by(Customer_ID) %>% 
+  #filter(Group==3) %>% 
+  mutate( `Company/Product` = paste(Country,",",Customer_ID,",",Products,"(",`Product_Category`,")")) %>% 
+   ggplot(aes(x=Product_Category, y=Region ,  color=type, label = `Company/Product`)) +
+  geom_point(aes(size = Total_Profit)) +
+# scale_x_continuous(labels = scales::comma) +
+  #scale_y_continuous(labels = scales::comma)
+  labs(title = "Gross Margin, Revenue and Volume purchased by Companies - Region",
+       x = "Product Category", y="Region")+
+  theme(legend.position = "bottom",
+        axis.title.y = element_text(hjust = 0.5))
+ # facet_wrap(~type, nrow = 3, "free_y")
+ggplotly(clust) %>% layout(legend = list(orientation = "h", x = 1, y =-0.2))
+```
+
+
+## Plot 4
+
+
+```{r}
+acc_revenue<-Sample%>% 
+  group_by(Account_Manager, Region) %>% 
+  summarise(revenue = sum(Revenue)) %>%
+  #mutate(aveOrdVal = (round((revenue / transactions),2))) %>%
+  ungroup() %>%
+  arrange(desc(revenue))
+
+accplot<-acc_revenue %>% 
+  ggplot(aes(fill=Region, y=revenue, x=Account_Manager)) + 
+    geom_bar(position="dodge", stat="identity")+
+  theme_compassred()+
+  scale_y_continuous(labels = scales::comma)+
+  theme(axis.text.x = element_text(angle=45))+
+  labs(x = 'Account Managers', y = 'Revenue ($)', title = 'Revenue generated by each Account Manager by Regions')
+   #scale_fill_brewer(palette = "Set2")
+ggplotly(accplot)
+```
+
+
+## Plot 5
+```{r}
+Acc<-Sample %>% 
+  select(Account_Manager, Region, Revenue, Gross_Margin, Discount_factor, Volume,Order.ID) %>% 
+  group_by(Account_Manager, Region) %>% 
+  summarise(Revenue = sum(Revenue), Gross_Margin = sum(Gross_Margin), Volume = sum(Volume), transactions = n_distinct(Order.ID))
+
+set.seed(123)
+cl_acc <- kmeans(Acc[3:6], 3, nstart = 20)
+cl_acc$cluster <- as.factor(cl_acc$cluster)
+dd_acc <- cbind(Acc, cluster = cl_acc$cluster)
+
+
+# midwest_select <- dd_acc[dd_acc$Revenue > 260495000 & 
+#                             dd_acc$Revenue <= 544827000 & 
+#                             dd_acc$Gross_Margin > 120608100 & 
+#                             dd_acc$Gross_Margin < 253691700, ]
+
+
+
+
+# dd_acc %>%
+#   #mutate(cluster = cl$cluster) %>%
+#   ggplot(aes(Revenue, Gross_Margin, color = factor(Account_Manager), label = Region)) +
+#    geom_text(check_overlap = TRUE)+
+#   annotate(geom="text", x=1084827000, y=203691700, label="=> Mid level regions ",
+#               color="red", size = 5)+
+#   scale_x_continuous(labels = scales::comma)+
+#    scale_y_continuous(labels = scales::comma)
+
+require("ggrepel")
+# dd_acc[which(dd_acc[,6]==1, arr.ind=TRUE), 6] <- "Cluster1"
+# dd_acc[which(dd_acc[,6]==2, arr.ind=TRUE), 6] <- "Cluster2"
+# dd_acc[which(dd_acc[,6]==3, arr.ind=TRUE), 6] <- "Cluster3"
+#dd[which(dd[,5]==4, arr.ind=TRUE), 5] <- "Highly Profitable Customers"
+
+#dd_acc[which(dd_acc[,6]==1, arr.ind=TRUE), ]
+
+
+
+dd_acc %>% 
+   ggplot(aes(transactions, Revenue, label = Region)) +
+geom_label_repel(aes(label = Region,
+                    fill = dd_acc$cluster), color = 'white',
+                    size = 3.5) +
+   theme(legend.position = "bottom")+
+   scale_x_continuous(labels = scales::comma)+
+scale_y_continuous(labels = scales::comma)+
+  labs(x = "Transactions",
+        y = " Revenue",
+        title = "Clustering based on Regions")
+
+
+
+```
+
+## Plot 6
+
+```{r}
+set.seed(11)
+#library(gapminder)
+
+PC_Pcl <- Sample %>% 
+  group_by(Product_Category,Region,Country, Products, Customer_ID,Account_Manager) %>% 
+  add_count() %>% 
+  group_by(Product_Category,Region,Country, Products, Customer_ID,Account_Manager,n) %>%
+  summarise(Revenue1 = sum(Revenue), Total_Profit = sum(Gross_Margin), Total_Quantity = sum(Volume))
+
+
+
+Dist <- dist(PC_Pcl[,7:9],method = "euclidean")
+hc<-hclust(Dist,"single")
+
+memb<-cutree(hc,k=10)
+PC_Pcl1 <- PC_Pcl[,7:9]
+
+cent<-NULL
+for (k in 1:15){cent<-rbind(cent,colMeans(PC_Pcl1[memb==k,,drop=FALSE]))}
+
+
+k.max <- 15
+data <- scale(PC_Pcl[,7:9])
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15 )$tot.withinss})
+
+# x <- plot(1:k.max, wss,
+#      type="b", pch = 19, frame = FALSE, 
+#      xlab="Number of clusters K",
+#      ylab="Total within-clusters sum of squares")
+
+
+cl=kmeans(PC_Pcl[,7:9],3)
+#write.csv(cl$centers, "C:\\Users\\Vinod\\Desktop\\Multivariate Analysis\\Solenis\\cl.csv")
+centers <- as.data.frame(cl$centers)
+centers <- centers %>% 
+  rownames_to_column("Clusternum") %>% 
+  mutate(type = ifelse(Total_Profit >= max(Total_Profit),"High Value Customers",
+                       ifelse(Total_Profit <= min(Total_Profit),"Low Value Customers","Mid Value Customers"))) %>% 
+  select("Clusternum","type")
+  
+
+CustomerData<-cbind(PC_Pcl, Group = cl$cluster)
+Customer__Data<-merge(CustomerData,centers,by.x = "Group",by.y = "Clusternum", all = T)
+#install.packages("factoextra")
+#library(factoextra)
+Customer_Data <- merge(Customer__Data,Sample,
+                       by.x = c("Product_Category","Region","Country","Products","Customer_ID","Account_Manager")
+                        ,by.y = c("Product_Category","Region","Country","Products","Customer_ID","Account_Manager"), all = T)
+#fviz_cluster(cl, data = PC_Pcl[,6:8],choose.vars = c("Revenue","Total_Profit"), geom = "point", stand = TRUE )
+Customer_Data$Group <- as.factor(Customer_Data$Group)
+clust <- ggplotly(Customer_Data %>% 
+   group_by(Customer_ID) %>% 
+  mutate(Total_Rev = sum(Revenue),DF = sum(Discount_factor)) %>% 
+  # filter(Customer_ID=="Cust_1060" | Customer_ID=="Cust_1059") %>% 
+  #filter(Group==3) %>% 
+  mutate(Details = paste(Country,",",Customer_ID,",",Products,"(",`Product_Category`,")","by",Account_Manager,"(",
+                          Region,")")) %>% 
+  #mutate(Gross_Margin = Total_Profit/100000, Revenue = (Revenue/100000)) %>% 
+  mutate(Revenue2 = (Revenue1*100/Total_Rev),Profit1 = (Total_Profit/sum(Total_Profit)),DF1 = Discount_factor/DF ) %>% 
+   ggplot(aes(x=n, y=Revenue2 , size = Total_Profit, color=type, label = Details)) +
+  geom_point() +
+#scale_x_continuous(labels = scales::comma) +
+#scale_y_continuous(labels = scales::comma)+
+  labs(title = "Revenue contribution of each customer in various Countries, Regions and Products",
+       x="Transactions",
+       y="Revenue Contribution %")+
+  theme(axis.text.x = element_text(hjust = 0),axis.title.x = element_text(vjust = -100),axis.title.y = element_text(hjust = -100), legend.position="bottom") +
+  facet_wrap(~ Product_Category, ncol =  2,  "free_x"))
+#sum(Customer_Data$Revenue1)  
+cluster123 <- clust %>%  layout(legend = list(orientation = "h", x = 0.5, y =-0.2))
+#orca(cluster123, file = "C:\\Users\\Vinod\\Desktop\\Multivariate Analysis\\Solenis\\image.png")
+#htmlwidgets::saveWidget(cluster123, "C:\\Users\\Vinod\\Desktop\\Multivariate Analysis\\Solenis\\index.png")
+```
+
+
+# Machine Learning Techniques - Principal Component Analysis 
+
+## Plot 1
+```{r}
+
+pca_produc<-Sample %>% 
+  group_by(Products) %>% 
+  summarise(Revenue = sum(Revenue), Gross_Margin = sum(Gross_Margin), Volume = sum(Volume), Discount_factor= sum(Discount_factor)) %>% 
+  select(Products, Revenue, Gross_Margin, Discount_factor, Volume)
+
+test<-column_to_rownames(pca_produc,var = "Products")
+pp=prcomp((test), scale = TRUE)  ## can change here
+
+sigma=var(test)
+
+
+
+pcanumber <- as.data.frame(pp$x) %>% 
+  rownames_to_column("Products")
+data2 <- merge(Sample,pcanumber,by.x = "Products",by.y = "Products",all = T)
+
+data2 %>% ggplot(aes(PC1,PC2, label = Products ,colour=Product_Category))+
+  #geom_point(color = rownames(test))+
+ #  scale_x_continuous(labels = scales::comma)+
+  # scale_y_continuous(labels = scales::comma)+
+  geom_text(check_overlap = FALSE)+
+   labs(x = "PC1 - Influenced by High Profit",
+        y = " PC2 - Influenced by Low Discount Factor",
+        title = "Principal Component Analysis on Products")
+
+
+  
+```
+
+
+
+
+## Plot 2
+```{r}
+PCAf = function(a,b){
+a <- enquo(a)
+  PC_P <- Sample %>%
+ group_by(Products, Customer_ID) %>%
+   summarise(Total_Profit = sum(!!a)) %>%
+  spread(Products, value = Total_Profit, 0)  %>%
+   group_by(Customer_ID) %>% column_to_rownames(var= "Customer_ID")
+  
+Clusters=kmeans(PC_P,3)
+#Df <- data.frame(pca$rotation, "cluster" = factor(length(Clusters$cluster)))
+#Df <- transform(Df, cluster_name = paste("Cluster",Clusters$cluster))
+
+ pca <- prcomp(PC_P, scale. = T)
+#pca2d <-  pca2d( pca, group=Clusters$cluster,show.labels=F)
+
+p1 <- ggplot(as.data.frame(pca$x),aes(x=PC1, y=PC3,label = rownames(pca$x))) +
+      theme_classic() +
+      geom_hline(yintercept = 0, color = "gray70") +
+      geom_vline(xintercept = 0, color = "gray70") +
+     # geom_text(check_overlap = TRUE)+
+     geom_point(alpha = 0.55, size = 3) +
+      xlab("PC1 - Profit affected by Semiconductors Products") +
+      ylab("PC2 - Profit affected by Aerospace Products") + 
+      xlim(-5, 6) + 
+      labs(title = paste("PCA of Companies -",b)) +
+  annotate("text", x=3.2, y=2.75, label= "Low Aerospace and Semi-conductors") + 
+  annotate("text", x = -2.75, y=-3.2, label = "High Aerospace and Semi-conductors")+
+  annotate("text", x = -2.75, y= 2.75, label = "Low Aerospace and High Semi-conductors")+
+  annotate("text", x = 3.2, y=-3.2, label = "High Aerospace and low Semi-conductors")
+  
+
+vars_transformed <- apply(pca$x, 2, var)
+var <- vars_transformed/sum(vars_transformed)
+#var <- broom::tidy(var)
+#var$x <- round(var$x,2)
+
+
+p1 <- ggplotly(p1)
+mylist  <- list(pca$x,pca$rotation)
+return(p1)
+
+
+}
+x <- PCAf(Gross_Margin,"Gross_Margin")
+x
+# PCAf(Revenue,"Revenue")
+# PCAf(Volume,"Volume")
+# PCAf(Profit,"Profit")
+# PCAf(Sales,"Sales")
+# PCAf(Quantity,"Quantity")
+# PCAf(Discount,"Discount")
+# 
+
+```
+
+
+
+
+
+
